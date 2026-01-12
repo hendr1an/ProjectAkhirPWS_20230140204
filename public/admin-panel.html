@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>Admin Command Center</title>
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@2.5.0/fonts/remixicon.css" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div class="dashboard-layout">
+        <div class="sidebar">
+            <div class="brand-logo">
+                <i class="ri-admin-line"></i> NexusAdmin
+            </div>
+            
+            <div onclick="switchTab('overview')" class="nav-item active" id="nav-overview">
+                <i class="ri-dashboard-line"></i> Overview
+            </div>
+            <div onclick="switchTab('users')" class="nav-item" id="nav-users">
+                <i class="ri-user-settings-line"></i> Users
+            </div>
+            <div onclick="switchTab('keys')" class="nav-item" id="nav-keys">
+                <i class="ri-key-2-line"></i> Global Keys
+            </div>
+            <div onclick="switchTab('products')" class="nav-item" id="nav-products">
+                <i class="ri-database-2-line"></i> Warehouse
+            </div>
+
+            <button onclick="logout()" class="btn btn-danger" style="margin-top: auto;">
+                <i class="ri-logout-box-line"></i> Exit System
+            </button>
+        </div>
+
+        <div class="main-content">
+            
+            <div id="section-overview" class="section-view active">
+                <div class="header-dash">
+                    <h2>System Overview</h2>
+                    <div class="badge badge-active">System Online</div>
+                </div>
+
+                <div class="stats-grid">
+                    <div class="glass-card">
+                        <div style="color: var(--accent-color);">Total Users</div>
+                        <div class="stat-num" id="statUsers">0</div>
+                    </div>
+                    <div class="glass-card">
+                        <div style="color: var(--success);">Active Keys</div>
+                        <div class="stat-num" id="statKeys">0</div>
+                    </div>
+                    <div class="glass-card">
+                        <div style="color: #ff9f43;">Products</div>
+                        <div class="stat-num" id="statProducts">0</div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="section-users" class="section-view">
+                <h2>User Management</h2>
+                <div class="glass-card">
+                    <table>
+                        <thead><tr><th>ID</th><th>Username</th><th>Join Date</th><th>Action</th></tr></thead>
+                        <tbody id="userTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="section-keys" class="section-view">
+                <h2>Global Key Monitor</h2>
+                <div class="glass-card">
+                    <table>
+                        <thead><tr><th>Owner</th><th>Label</th><th>Key Snippet</th><th>Action</th></tr></thead>
+                        <tbody id="keyTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="section-products" class="section-view">
+                <div class="header-dash">
+                    <h2>Warehouse Management</h2>
+                </div>
+                
+                <div class="glass-card" style="margin-bottom: 20px; background: rgba(0,0,0,0.2);">
+                    <div style="display: grid; grid-template-columns: 2fr 1fr 1fr auto; gap: 10px; align-items: center;">
+                        <input type="text" id="prodName" placeholder="Product Name (ex: iPhone 15)">
+                        <input type="number" id="prodPrice" placeholder="Price (Rp)">
+                        <input type="number" id="prodStock" placeholder="Stock">
+                        
+                        <button class="btn btn-primary" id="btnSaveProduct" onclick="handleFormSubmit()">
+                            <i class="ri-add-line"></i> Add
+                        </button>
+                    </div>
+                    <div id="cancelEditBox" style="display: none; margin-top: 10px; text-align: right;">
+                        <span style="font-size: 12px; color: #ff9f43; margin-right: 10px;">Editing Mode Active</span>
+                        <button class="btn btn-ghost" onclick="cancelEdit()" style="padding: 5px 10px; font-size: 12px;">Cancel Edit</button>
+                    </div>
+                </div>
+
+                <div class="glass-card">
+                    <table>
+                        <thead><tr><th>ID</th><th>Product</th><th>Price</th><th>Stock</th><th>Action</th></tr></thead>
+                        <tbody id="productTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        let allProducts = []; // Menyimpan data produk lokal agar mudah diedit
+        let editingId = null; // Menyimpan ID produk yang sedang diedit (null = mode tambah)
+
+        window.onload = async () => {
+            const auth = await fetch('/auth/me').then(r => r.json());
+            if (!auth.loggedIn || auth.user.role !== 'admin') window.location.href = '/index.html';
+            loadStats();
+        };
+
+        function switchTab(tab) {
+            document.querySelectorAll('.section-view').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+            
+            document.getElementById('section-' + tab).classList.add('active');
+            document.getElementById('nav-' + tab).classList.add('active');
+
+            if(tab === 'overview') loadStats();
+            if(tab === 'users') loadUsers();
+            if(tab === 'keys') loadKeys();
+            if(tab === 'products') loadProducts();
+        }
+
+        // --- LOAD DATA ---
+        async function loadStats() {
+            const d = await fetch('/api/admin/stats').then(r => r.json());
+            document.getElementById('statUsers').innerText = d.users;
+            document.getElementById('statKeys').innerText = d.keys;
+            document.getElementById('statProducts').innerText = d.products;
+        }
+
+        async function loadUsers() {
+            const d = await fetch('/api/admin/users').then(r => r.json());
+            const b = document.getElementById('userTableBody'); b.innerHTML = '';
+            d.forEach(u => {
+                b.innerHTML += `<tr>
+                    <td>#${u.id}</td><td><b>${u.username}</b></td>
+                    <td>${new Date(u.created_at).toLocaleDateString()}</td>
+                    <td><button class="btn btn-danger" onclick="banUser(${u.id})">Ban</button></td>
+                </tr>`;
+            });
+        }
+
+        async function loadKeys() {
+            const d = await fetch('/api/admin/all-keys').then(r => r.json());
+            const b = document.getElementById('keyTableBody'); b.innerHTML = '';
+            d.forEach(k => {
+                b.innerHTML += `<tr>
+                    <td>${k.username}</td><td>${k.key_label}</td><td><code>${k.api_key.substring(0,8)}...</code></td>
+                    <td><button class="btn btn-danger" onclick="revokeKey(${k.id})">Revoke</button></td>
+                </tr>`;
+            });
+        }
+
+        async function loadProducts() {
+            const d = await fetch('/api/admin/products').then(r => r.json());
+            allProducts = d; // Simpan ke variabel global
+            const b = document.getElementById('productTableBody'); b.innerHTML = '';
+            
+            d.forEach(p => {
+                // Format Rupiah
+                const harga = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR' }).format(p.harga);
+                
+                b.innerHTML += `<tr>
+                    <td>#${p.id}</td><td><b>${p.nama_produk}</b></td>
+                    <td>${harga}</td><td>${p.stok}</td>
+                    <td>
+                        <button class="btn btn-ghost" onclick="editProduct(${p.id})">
+                            <i class="ri-pencil-line" style="color: #00d2ff;"></i>
+                        </button>
+                        <button class="btn btn-ghost" onclick="deleteProduct(${p.id})">
+                            <i class="ri-delete-bin-line" style="color: #ff4b4b;"></i>
+                        </button>
+                    </td>
+                </tr>`;
+            });
+        }
+
+        // --- CORE LOGIC: EDIT & ADD ---
+
+        // 1. Saat tombol Edit (Pensil) diklik
+        function editProduct(id) {
+            // Cari data produk dari array lokal
+            const product = allProducts.find(p => p.id === id);
+            if (!product) return;
+
+            // Isi Form dengan data lama
+            document.getElementById('prodName').value = product.nama_produk;
+            document.getElementById('prodPrice').value = product.harga;
+            document.getElementById('prodStock').value = product.stok;
+
+            // Ubah Mode menjadi Edit
+            editingId = id;
+            const btn = document.getElementById('btnSaveProduct');
+            btn.innerHTML = '<i class="ri-save-line"></i> Update';
+            btn.style.background = 'linear-gradient(135deg, #f6d365 0%, #fda085 100%)'; // Warna Oranye
+            
+            // Tampilkan tombol Cancel
+            document.getElementById('cancelEditBox').style.display = 'block';
+            
+            // Scroll ke atas (ke form)
+            document.getElementById('section-products').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // 2. Batalkan Edit
+        function cancelEdit() {
+            editingId = null;
+            document.getElementById('prodName').value = '';
+            document.getElementById('prodPrice').value = '';
+            document.getElementById('prodStock').value = '';
+            
+            const btn = document.getElementById('btnSaveProduct');
+            btn.innerHTML = '<i class="ri-add-line"></i> Add';
+            btn.style.background = ''; // Balik ke warna default (Ungu)
+            
+            document.getElementById('cancelEditBox').style.display = 'none';
+        }
+
+        // 3. Handle Submit (Cerdas: Bisa Add atau Update)
+        async function handleFormSubmit() {
+            const body = {
+                nama_produk: document.getElementById('prodName').value,
+                harga: document.getElementById('prodPrice').value,
+                stok: document.getElementById('prodStock').value
+            };
+            
+            if(!body.nama_produk) return alert("Nama produk wajib diisi!");
+
+            if (editingId) {
+                // --- LOGIKA UPDATE ---
+                await fetch(`/api/admin/products/${editingId}`, { 
+                    method: 'PUT', 
+                    headers: {'Content-Type': 'application/json'}, 
+                    body: JSON.stringify(body) 
+                });
+                alert("Produk berhasil diupdate!");
+                cancelEdit(); // Reset form
+            } else {
+                // --- LOGIKA ADD (BARU) ---
+                await fetch('/api/admin/products', { 
+                    method: 'POST', 
+                    headers: {'Content-Type': 'application/json'}, 
+                    body: JSON.stringify(body) 
+                });
+                // Bersihkan form manual (tanpa reset tombol karena memang sudah mode Add)
+                document.getElementById('prodName').value = '';
+                document.getElementById('prodPrice').value = '';
+                document.getElementById('prodStock').value = '';
+            }
+
+            loadProducts(); // Refresh tabel
+            loadStats();
+        }
+
+        // --- DELETE & BAN ---
+        async function deleteProduct(id) {
+            if(confirm('Yakin hapus produk ini?')) { await fetch(`/api/admin/products/${id}`, { method: 'DELETE' }); loadProducts(); loadStats(); }
+        }
+        async function banUser(id) {
+            if(confirm('Ban User?')) { await fetch(`/api/admin/users/${id}`, { method: 'DELETE' }); loadUsers(); loadStats(); }
+        }
+        async function revokeKey(id) {
+            if(confirm('Revoke Key?')) { await fetch(`/api/admin/revoke/${id}`, { method: 'DELETE' }); loadKeys(); loadStats(); }
+        }
+
+        function logout() { fetch('/auth/logout').then(() => window.location.href = '/index.html'); }
+    </script>
+</body>
+</html>

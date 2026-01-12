@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>Developer Console</title>
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@2.5.0/fonts/remixicon.css" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <style>
+        /* Tambahan CSS Khusus untuk tombol Tab kecil */
+        .tab-btn { 
+            padding: 6px 12px; 
+            font-size: 12px; 
+            border-radius: 20px; 
+            border: 1px solid var(--glass-border); 
+            background: rgba(255,255,255,0.05); 
+            color: var(--text-muted); 
+            cursor: pointer;
+        }
+        .tab-btn.active { 
+            background: var(--primary-gradient); 
+            color: white; 
+            border: none; 
+        }
+    </style>
+</head>
+<body>
+
+    <div class="dashboard-layout">
+        <div class="sidebar">
+            <div class="brand-logo">
+                <i class="ri-code-s-slash-line"></i> NexusDev
+            </div>
+            <div class="nav-item active">
+                <i class="ri-key-2-line"></i> API Keys
+            </div>
+            <div class="nav-item" onclick="alert('Coming Soon')">
+                <i class="ri-file-list-3-line"></i> Documentation
+            </div>
+            
+            <div style="margin-top: auto;">
+                <div class="glass-card" style="padding: 15px; margin-bottom: 10px;">
+                    <small style="color: var(--text-muted);">Logged in as</small><br>
+                    <b id="usernameDisplay">...</b>
+                </div>
+                <button onclick="logout()" class="btn btn-danger" style="width: 100%;">
+                    <i class="ri-logout-box-line"></i> Logout
+                </button>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="header-dash">
+                <div>
+                    <h2>API Management</h2>
+                    <p style="color: var(--text-muted);">Kelola kunci akses dan uji coba endpoint.</p>
+                </div>
+                <button class="btn btn-primary" onclick="createKey()">
+                    <i class="ri-add-circle-line"></i> New API Key
+                </button>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1.5fr; gap: 30px;">
+                
+                <div>
+                    <h4 style="margin-bottom: 15px; color: var(--accent-color);">Your Active Keys</h4>
+                    <div id="keyList" style="display: flex; flex-direction: column; gap: 15px;">
+                        <div class="glass-card">Loading...</div>
+                    </div>
+                </div>
+
+                <div class="glass-card">
+                    <h3 style="border-bottom: 1px solid var(--glass-border); padding-bottom: 15px; margin-bottom: 20px;">
+                        <i class="ri-terminal-box-line"></i> API Playground
+                    </h3>
+                    
+                    <div style="display: grid; gap: 15px;">
+                        <div>
+                            <label style="font-size: 12px; color: var(--text-muted);">1. Select Key</label>
+                            <select id="selectKey"><option>Loading...</option></select>
+                        </div>
+                        
+                        <div>
+                            <label style="font-size: 12px; color: var(--text-muted);">2. Endpoint</label>
+                            <select id="selectEndpoint" onchange="updateInputBox()">
+                                <option value="/api/v1/products">GET /products (List Items)</option>
+                                <option value="/api/v1/products/search">GET /products/search (Query)</option>
+                                <option value="/api/v1/products/detail">GET /products/detail/:id (Detail)</option>
+                            </select>
+                        </div>
+
+                        <div id="paramBox" style="display: none;">
+                            <label style="font-size: 12px; color: var(--text-muted);">3. Parameter</label>
+                            <input type="text" id="paramInput" placeholder="...">
+                        </div>
+
+                        <button class="btn btn-primary" onclick="sendRequest()">
+                            Send Request <i class="ri-send-plane-fill"></i>
+                        </button>
+                    </div>
+
+                    <div style="margin-top: 25px; display: flex; gap: 10px; align-items: center;">
+                        <span style="font-size: 12px; color: var(--text-muted);">View Mode:</span>
+                        <button class="tab-btn active" onclick="switchView('auto', this)">✨ Auto</button>
+                        <button class="tab-btn" onclick="switchView('table', this)">📊 Table</button>
+                        <button class="tab-btn" onclick="switchView('json', this)">{} JSON</button>
+                    </div>
+
+                    <div style="margin-top: 10px; background: #000; border-radius: 10px; padding: 15px; min-height: 200px; font-family: monospace; font-size: 13px; color: #00e676; overflow-x: auto;" id="responseBox">
+                        // Hasil request akan muncul di sini...
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentData = null; // Menyimpan data hasil fetch terakhir
+
+        window.onload = async () => {
+            const auth = await fetch('/auth/me').then(r => r.json());
+            if (!auth.loggedIn) window.location.href = '/index.html';
+            document.getElementById('usernameDisplay').innerText = auth.user.username;
+            loadKeys();
+        };
+
+        async function loadKeys() {
+            const res = await fetch('/api/my-keys');
+            const keys = await res.json();
+            
+            const list = document.getElementById('keyList');
+            const select = document.getElementById('selectKey');
+            
+            list.innerHTML = '';
+            select.innerHTML = '<option value="">-- Choose Key --</option>';
+
+            keys.forEach(k => {
+                list.innerHTML += `
+                    <div class="glass-card" style="padding: 15px; display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <div style="font-weight: bold; color: white;">${k.key_label}</div>
+                            <code>${k.api_key}</code>
+                        </div>
+                        <button class="btn btn-danger" style="padding: 8px;" onclick="revokeKey(${k.id})">
+                            <i class="ri-delete-bin-line"></i>
+                        </button>
+                    </div>
+                `;
+                select.innerHTML += `<option value="${k.api_key}">${k.key_label}</option>`;
+            });
+        }
+
+        async function createKey() {
+            const label = prompt("Nama Project Baru:");
+            if(!label) return;
+            await fetch('/api/create-key', {
+                method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ label })
+            });
+            loadKeys();
+        }
+
+        async function revokeKey(id) {
+            if(confirm('Hapus kunci ini?')) {
+                await fetch(`/api/revoke-key/${id}`, { method: 'DELETE' });
+                loadKeys();
+            }
+        }
+
+        function updateInputBox() {
+            const endpoint = document.getElementById('selectEndpoint').value;
+            const paramBox = document.getElementById('paramBox');
+            if (endpoint.includes('search') || endpoint.includes('detail')) paramBox.style.display = 'block';
+            else paramBox.style.display = 'none';
+        }
+
+        // --- CORE LOGIC: SEND REQUEST ---
+        async function sendRequest() {
+            const apiKey = document.getElementById('selectKey').value;
+            let endpoint = document.getElementById('selectEndpoint').value;
+            const param = document.getElementById('paramInput').value;
+            
+            if(!apiKey) return alert("Pilih API Key!");
+            
+            if (endpoint.includes('search')) endpoint += "?q=" + encodeURIComponent(param);
+            else if (endpoint.includes('detail')) endpoint += "/" + param;
+
+            document.getElementById('responseBox').innerText = "Wait...";
+            
+            try {
+                const res = await fetch(endpoint, { headers: { 'x-api-key': apiKey } });
+                const json = await res.json();
+                
+                // Simpan data ke variabel global agar bisa di-switch view-nya
+                currentData = json;
+                
+                // Render Default (Auto)
+                renderAuto();
+
+            } catch(e) {
+                document.getElementById('responseBox').innerText = "Error: " + e.message;
+            }
+        }
+
+        // --- LOGIKA DISPLAY (JSON vs TABLE) ---
+
+        function switchView(mode, btn) {
+            // Update tombol aktif
+            if(btn) {
+                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+            }
+
+            if (!currentData) return;
+
+            if (mode === 'json') renderJSON();
+            else if (mode === 'table') renderTable();
+            else renderAuto();
+        }
+
+        function renderJSON() {
+            document.getElementById('responseBox').innerText = JSON.stringify(currentData, null, 2);
+        }
+
+        function renderTable() {
+            let items = currentData.data || currentData;
+
+            // LOGIKA PENTING: Jika data cuma SATU OBJECT (Detail Product), bungkus jadi Array biar bisa jadi Tabel
+            if (!Array.isArray(items) && typeof items === 'object') {
+                items = [items];
+            }
+
+            if (!Array.isArray(items) || items.length === 0) {
+                return renderJSON(); // Gak bisa jadi tabel, balik ke JSON
+            }
+
+            // Buat Tabel HTML
+            const headers = Object.keys(items[0]);
+            let html = `<table><thead><tr>`;
+            headers.forEach(h => html += `<th>${h}</th>`);
+            html += `</tr></thead><tbody>`;
+
+            items.forEach(row => {
+                html += `<tr>`;
+                headers.forEach(h => html += `<td>${row[h]}</td>`);
+                html += `</tr>`;
+            });
+            html += `</tbody></table>`;
+
+            document.getElementById('responseBox').innerHTML = html;
+        }
+
+        function renderAuto() {
+            let items = currentData.data || currentData;
+            // Jika Array atau Object, jadikan Table. Jika Error/Pesan, jadikan JSON.
+            if (Array.isArray(items) || (typeof items === 'object' && items !== null)) {
+                renderTable();
+            } else {
+                renderJSON();
+            }
+        }
+
+        function logout() { fetch('/auth/logout').then(() => window.location.href = '/index.html'); }
+    </script>
+</body>
+</html>
